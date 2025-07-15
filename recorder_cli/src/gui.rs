@@ -60,6 +60,7 @@ impl eframe::App for RecorderApp {
                         }
                         self.is_recording = false;
                         self.started_at = None;
+                        self.error_message = None;
                     }
 
                     // Live timer
@@ -142,16 +143,25 @@ impl RecorderApp {
         let output_path = next_file_name();
         
         if let Ok(mut recorder) = self.recorder.lock() {
-            // Try to record the desktop (entire screen)
-            // We'll use "Desktop" as the window name, though this might need adjustment
-            match recorder.start("Desktop", 1920, 1080, 6_000_000, &output_path) {
+            // Try to record with empty window name for full screen capture
+            match recorder.start("", 1920, 1080, 6_000_000, &output_path) {
                 Ok(_) => {
                     self.is_recording = true;
                     self.started_at = Some(Local::now());
                     self.error_message = None;
                 }
                 Err(e) => {
-                    self.error_message = Some(format!("Failed to start recording: {}", e));
+                    // Try again with "Teamfight Tactics" as fallback
+                    match recorder.start("Teamfight Tactics", 1920, 1080, 6_000_000, &output_path) {
+                        Ok(_) => {
+                            self.is_recording = true;
+                            self.started_at = Some(Local::now());
+                            self.error_message = None;
+                        }
+                        Err(_) => {
+                            self.error_message = Some(format!("Failed to start recording: {}", e));
+                        }
+                    }
                 }
             }
         }

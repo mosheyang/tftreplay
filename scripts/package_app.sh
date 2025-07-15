@@ -66,6 +66,10 @@ if command -v install_name_tool &> /dev/null; then
         "$APP/Contents/MacOS/recorder"
 fi
 
+# Copy our custom Info.plist to ensure correct app name and settings
+echo "📝 Copying custom Info.plist..."
+cp mac_app/Info.plist "$APP/Contents/Info.plist"
+
 echo "✅ Created $APP"
 echo ""
 echo "To run the app:"
