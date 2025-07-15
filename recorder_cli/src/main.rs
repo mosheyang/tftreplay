@@ -101,7 +101,10 @@ fn record_command(
     })?;
     
     // Start recording
-    recorder.start(&window, width, height, bitrate, &out)?;
+    if let Err(e) = recorder.start(&window, width, height, bitrate, &out) {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
     println!("Recording started. Press Ctrl+C to stop.");
     
     // Wait for duration or interrupt

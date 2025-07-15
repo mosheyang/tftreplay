@@ -1,80 +1,86 @@
 // ABOUTME: FFI bridge between Rust and Swift using manual C bindings
 // ABOUTME: Provides low-level interface for cross-language communication
 
-use std::ffi::{c_char, CString};
+use std::ffi::{c_char, c_void, CString};
 
-#[repr(C)]
+#[repr(transparent)]
 pub struct SwiftCapture {
-    _private: [u8; 0],
+    ptr: *mut c_void,
 }
+
+// Ensure SwiftCapture is Send + Sync for thread safety
+unsafe impl Send for SwiftCapture {}
+unsafe impl Sync for SwiftCapture {}
 
 #[cfg(target_os = "macos")]
 extern "C" {
-    fn swift_capture_create() -> *mut SwiftCapture;
-    fn swift_capture_destroy(capture: *mut SwiftCapture);
+    fn swift_capture_create() -> *mut c_void;
+    fn swift_capture_destroy(ptr: *mut c_void);
     fn swift_capture_start(
-        capture: *mut SwiftCapture,
+        ptr: *mut c_void,
         window_title: *const c_char,
         width: u32,
         height: u32,
         bitrate: u32,
         output_path: *const c_char,
     ) -> bool;
-    fn swift_capture_stop(capture: *mut SwiftCapture);
+    fn swift_capture_stop(ptr: *mut c_void);
 }
 
 #[cfg(target_os = "macos")]
 pub fn create_capture_session() -> SwiftCapture {
-    unsafe {
-        let ptr = swift_capture_create();
-        assert!(!ptr.is_null(), "Failed to create Swift capture session");
-        SwiftCapture { _private: [] }
-    }
+    let ptr = unsafe { swift_capture_create() };
+    assert!(!ptr.is_null(), "Failed to create Swift capture session");
+    SwiftCapture { ptr }
 }
 
 #[cfg(target_os = "macos")]
 pub fn start_capture(
-    _capture: &mut SwiftCapture,
+    cap: &mut SwiftCapture,
     window_title: &str,
     width: u32,
     height: u32,
     bitrate: u32,
     output_path: &str,
 ) -> bool {
+    let c_title = CString::new(window_title).expect("Invalid window title");
+    let c_path = CString::new(output_path).expect("Invalid output path");
+    
     unsafe {
-        let c_title = CString::new(window_title).expect("Invalid window title");
-        let c_path = CString::new(output_path).expect("Invalid output path");
-        
-        // For now, create a temporary capture session
-        let capture_ptr = swift_capture_create();
-        let result = swift_capture_start(
-            capture_ptr,
+        swift_capture_start(
+            cap.ptr,
             c_title.as_ptr(),
             width,
             height,
             bitrate,
             c_path.as_ptr(),
-        );
-        
-        // Note: In real implementation, we'd store the pointer in SwiftCapture
-        result
+        )
     }
 }
 
 #[cfg(target_os = "macos")]
-pub fn stop_capture(_capture: &mut SwiftCapture) {
-    // In real implementation, we'd use the stored pointer
-    // For now, this is a no-op
+pub fn stop_capture(cap: &mut SwiftCapture) {
+    unsafe { swift_capture_stop(cap.ptr) }
 }
 
+#[cfg(target_os = "macos")]
+impl Drop for SwiftCapture {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { swift_capture_destroy(self.ptr) }
+        }
+    }
+}
+
+// Non-macOS stubs
 #[cfg(not(target_os = "macos"))]
 pub fn create_capture_session() -> SwiftCapture {
-    SwiftCapture { _private: [] }
+    SwiftCapture { ptr: std::ptr::null_mut() }
 }
 
 #[cfg(not(target_os = "macos"))]
 pub fn start_capture(
-    _capture: &mut SwiftCapture,
+    _cap: &mut SwiftCapture,
     _window_title: &str,
     _width: u32,
     _height: u32,
@@ -85,4 +91,9 @@ pub fn start_capture(
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn stop_capture(_capture: &mut SwiftCapture) {}
+pub fn stop_capture(_cap: &mut SwiftCapture) {}
+
+#[cfg(not(target_os = "macos"))]
+impl Drop for SwiftCapture {
+    fn drop(&mut self) {}
+}

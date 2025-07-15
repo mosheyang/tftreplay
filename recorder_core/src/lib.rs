@@ -58,7 +58,12 @@ impl Recorder {
             inner.is_recording = true;
             Ok(())
         } else {
-            anyhow::bail!("Failed to start capture")
+            anyhow::bail!(
+                "Failed to start capture. \
+                 Make sure the window title \"{}\" exists and that the app has \
+                 Screen Recording permission (System Settings > Privacy & Security).",
+                window_title
+            )
         }
     }
 
@@ -124,3 +129,8 @@ mod tests {
 #[cfg(test)]
 #[path = "tests/ffi_smoke.rs"]
 mod ffi_smoke;
+
+#[cfg(test)]
+#[cfg(target_os = "macos")]
+#[path = "tests/ffi_integration.rs"]
+mod ffi_integration;

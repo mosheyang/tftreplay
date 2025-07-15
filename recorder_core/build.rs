@@ -1,47 +1,50 @@
 // ABOUTME: Build script for linking Swift capture library with Rust
 // ABOUTME: Handles platform-specific compilation and linking requirements
 
+#[cfg(target_os = "macos")]
 fn main() {
-    #[cfg(target_os = "macos")]
-    {
-        use std::path::PathBuf;
+    use std::{path::PathBuf, process::Command};
+
+    // 1. Build Swift package in release mode
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let project_root = manifest_dir
+        .parent()
+        .expect("Failed to get project root");
+    let swift_pkg = project_root.join("apple_capture");
+    
+    println!("cargo:warning=Building Swift package at {:?}", swift_pkg);
+    
+    let output = Command::new("swift")
+        .args(["build", "-c", "release", "--package-path"])
+        .arg(&swift_pkg)
+        .output()
+        .expect("Failed to run swift build");
         
-        // Get the absolute path to the Swift library
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let swift_lib_path = PathBuf::from(manifest_dir)
-            .parent()
-            .unwrap()
-            .join("apple_capture")
-            .join(".build")
-            .join("arm64-apple-macosx")
-            .join("release");
-        
-        // For now, always use the C stub until we implement proper Swift-C bridging
-        let bridge_file = PathBuf::from(manifest_dir)
-            .parent()
-            .unwrap()
-            .join("apple_capture")
-            .join("Sources")
-            .join("AppleCaptureC")
-            .join("bridge.c");
-            
-        cc::Build::new()
-            .file(bridge_file)
-            .compile("applecapture_stub");
-            
-        // Also link the Swift library if it exists (for future use)
-        if swift_lib_path.exists() {
-            println!("cargo:rustc-link-search=native={}", swift_lib_path.display());
-        }
-        
-        // Link with system frameworks
-        println!("cargo:rustc-link-lib=framework=AVFoundation");
-        println!("cargo:rustc-link-lib=framework=CoreMedia");
-        println!("cargo:rustc-link-lib=framework=CoreVideo");
-        println!("cargo:rustc-link-lib=framework=VideoToolbox");
-        println!("cargo:rustc-link-lib=framework=CoreGraphics");
-        
-        // Rerun if Swift package changes
-        println!("cargo:rerun-if-changed=../apple_capture/Sources");
+    if !output.status.success() {
+        eprintln!("Swift build failed!");
+        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        panic!("Swift build failed");
     }
+
+    // 2. Tell Cargo where to find the compiled .dylib
+    let lib_dir = swift_pkg.join(".build/arm64-apple-macosx/release");
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=dylib=AppleCapture");
+    
+    // Add rpath so the binary can find the library at runtime
+    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
+
+    // 3. Link system frameworks
+    for fw in ["AVFoundation", "CoreMedia", "CoreVideo", "VideoToolbox", "CoreGraphics"] {
+        println!("cargo:rustc-link-lib=framework={}", fw);
+    }
+
+    // 4. Rebuild if Swift code changed
+    println!("cargo:rerun-if-changed=../apple_capture/Sources");
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main() {
+    // No-op on other platforms
 }

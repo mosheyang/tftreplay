@@ -13,7 +13,7 @@ let package = Package(
         .library(
             name: "AppleCapture",
             type: .dynamic,
-            targets: ["AppleCapture"]),
+            targets: ["AppleCapture", "AppleCaptureC"]),
     ],
     targets: [
         .target(
@@ -23,6 +23,13 @@ let package = Package(
             swiftSettings: [
                 .unsafeFlags(["-enable-library-evolution"])
             ]
+        ),
+        // Header-only C target so Cargo can dlopen symbols
+        .target(
+            name: "AppleCaptureC",
+            dependencies: ["AppleCapture"],
+            path: "Sources/AppleCaptureC",
+            publicHeadersPath: "."
         ),
         .testTarget(
             name: "AppleCaptureTests",
