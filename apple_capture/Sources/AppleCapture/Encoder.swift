@@ -78,7 +78,7 @@ final class Encoder: NSObject {
         }
     }
     
-    func finalize() {
+    func finalizeRecording() {
         queue.async { [weak self] in
             guard let self = self, self.isWriting else { return }
             

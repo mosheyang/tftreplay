@@ -12,6 +12,7 @@ let package = Package(
     products: [
         .library(
             name: "AppleCapture",
+            type: .dynamic,
             targets: ["AppleCapture"]),
     ],
     targets: [

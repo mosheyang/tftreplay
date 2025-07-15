@@ -1,8 +1,7 @@
 // ABOUTME: FFI bridge between Rust and Swift using manual C bindings
 // ABOUTME: Provides low-level interface for cross-language communication
 
-use std::ffi::{c_char, CStr, CString};
-use std::ptr;
+use std::ffi::{c_char, CString};
 
 #[repr(C)]
 pub struct SwiftCapture {
@@ -64,10 +63,8 @@ pub fn start_capture(
 
 #[cfg(target_os = "macos")]
 pub fn stop_capture(_capture: &mut SwiftCapture) {
-    unsafe {
-        // In real implementation, we'd use the stored pointer
-        // For now, this is a no-op
-    }
+    // In real implementation, we'd use the stored pointer
+    // For now, this is a no-op
 }
 
 #[cfg(not(target_os = "macos"))]

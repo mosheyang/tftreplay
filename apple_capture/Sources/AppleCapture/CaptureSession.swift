@@ -39,7 +39,7 @@ public final class CaptureSession: NSObject {
     public func stop() {
         queue.async { [weak self] in
             self?.session.stopRunning()
-            self?.encoder?.finalize()
+            self?.encoder?.finalizeRecording()
         }
     }
     
@@ -63,7 +63,7 @@ public final class CaptureSession: NSObject {
             throw CaptureError.windowNotFound
         }
         
-        guard let windowNumber = windowInfo[kCGWindowNumber as String] as? Int else {
+        guard windowInfo[kCGWindowNumber as String] as? Int != nil else {
             throw CaptureError.invalidWindowNumber
         }
         
