@@ -57,6 +57,11 @@ jobs:
     - name: Rust tests
       run: cargo test --workspace --verbose
     
+    - name: Bundle and integration tests
+      run: |
+        echo "Running bundle tests including rpath checks..."
+        cargo test --workspace -- --ignored
+    
     - name: Build release binary
       run: cargo build --release
     

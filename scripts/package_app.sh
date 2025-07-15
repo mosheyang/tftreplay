@@ -17,6 +17,8 @@ elif [ -d "target/release/bundle/osx/recorder_cli.app" ]; then
     # Rename to the expected name
     mv "$APP" "target/release/bundle/osx/TFT Recorder.app"
     APP="target/release/bundle/osx/TFT Recorder.app"
+    # Delete the stale bundle to avoid confusion
+    rm -rf "target/release/bundle/osx/recorder_cli.app"
 else
     echo "❌ Error: Could not find app bundle"
     exit 1
@@ -45,10 +47,17 @@ else
     exit 1
 fi
 
-# Fix the library reference to use @rpath
+# Fix the library references to use @rpath correctly
 if command -v install_name_tool &> /dev/null; then
     echo "🔧 Updating library paths..."
-    install_name_tool -change "@rpath/libAppleCapture.dylib" "@executable_path/../Frameworks/libAppleCapture.dylib" "$APP/Contents/MacOS/recorder" 2>/dev/null || true
+    # Set the dylib's install name to @rpath-relative
+    install_name_tool -id "@rpath/libAppleCapture.dylib" \
+        "$APP/Contents/Frameworks/libAppleCapture.dylib"
+    
+    # Ensure the binary references the dylib via @rpath
+    install_name_tool -change "@rpath/libAppleCapture.dylib" \
+        "@rpath/libAppleCapture.dylib" \
+        "$APP/Contents/MacOS/recorder"
 fi
 
 echo "✅ Created $APP"
