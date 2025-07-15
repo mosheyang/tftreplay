@@ -34,7 +34,13 @@ echo "🔨 Building Swift package (release)..."
 mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
 
 if [ -f "resources/tft.icns" ]; then
-    echo "📦 Copying app icon..."
+    # >1 kB = real icon, placeholder is only ~70 B
+    ICON_SIZE=$(stat -f%z resources/tft.icns)
+    if [ $ICON_SIZE -lt 1024 ]; then
+        echo "❌ resources/tft.icns is still a placeholder. Please replace it with a real icon."
+        exit 1
+    fi
+    echo "📦 Copying app icon ($ICON_SIZE bytes)..."
     cp "resources/tft.icns" "$APP/Contents/Resources/"
 fi
 

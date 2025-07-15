@@ -78,13 +78,23 @@ final class Encoder: NSObject {
         }
     }
     
+    /// Finishes writing synchronously (max 10 s) so the resulting file is
+    /// immediately playable in QuickTime.
     func finalizeRecording() {
-        queue.async { [weak self] in
+        queue.sync { [weak self] in
             guard let self = self, self.isWriting else { return }
-            
+            self.isWriting = false
+
             self.input.markAsFinished()
+
+            let sema = DispatchSemaphore(value: 0)
             self.writer.finishWriting {
-                print("Recording finished: \(self.writer.status == .completed ? "Success" : "Failed")")
+                sema.signal()
+            }
+
+            // Wait up to 10 s for the moov atom to be written
+            if sema.wait(timeout: .now() + 10) == .timedOut {
+                print("⚠️  Encoder: finishWriting timed out – file may be corrupt")
             }
         }
     }

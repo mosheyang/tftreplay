@@ -6,6 +6,7 @@ use recorder_core::Recorder;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use chrono::{DateTime, Local};
 
 const RECORDINGS_DIR: &str = "~/Movies/TFT Recorder";
 
@@ -32,12 +33,53 @@ pub fn launch() -> anyhow::Result<()> {
 struct RecorderApp {
     recorder: Arc<Mutex<Recorder>>,
     is_recording: bool,
+    started_at: Option<DateTime<Local>>,
     error_message: Option<String>,
 }
 
 impl eframe::App for RecorderApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Left panel with recordings list
+        // ---------- global style ----------
+        ctx.set_style(egui::Style {
+            visuals: egui::Visuals::dark(),
+            ..Default::default()
+        });
+
+        // ---------- top toolbar ----------
+        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.add_space(10.0);
+                
+                if self.is_recording {
+                    // Stop button
+                    let stop_button = egui::Button::new("⏹ Stop")
+                        .min_size(egui::vec2(80.0, 30.0));
+                    if ui.add(stop_button).clicked() {
+                        if let Ok(mut rec) = self.recorder.lock() {
+                            rec.stop();
+                        }
+                        self.is_recording = false;
+                        self.started_at = None;
+                    }
+
+                    // Live timer
+                    if let Some(start) = self.started_at {
+                        let secs = (Local::now() - start).num_seconds();
+                        ui.add_space(20.0);
+                        ui.strong(format!("{:02}:{:02}", secs / 60, secs % 60));
+                    }
+                } else {
+                    // Record button
+                    let rec_button = egui::Button::new("● Rec")
+                        .min_size(egui::vec2(80.0, 30.0));
+                    if ui.add(rec_button).clicked() {
+                        self.start_recording();
+                    }
+                }
+            });
+        });
+
+        // ---------- left panel ----------
         egui::SidePanel::left("recordings_panel")
             .default_width(250.0)
             .show(ctx, |ui| {
@@ -68,38 +110,18 @@ impl eframe::App for RecorderApp {
                 });
             });
 
-        // Central panel with recording controls
+        // ---------- central panel (info / errors) ----------
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(50.0);
-                
-                if self.is_recording {
-                    ui.heading("Recording in progress...");
-                    ui.add_space(20.0);
-                    
-                    if ui.button("⏹ Stop Recording").clicked() {
-                        if let Ok(mut recorder) = self.recorder.lock() {
-                            recorder.stop();
-                            self.is_recording = false;
-                        }
-                    }
-                } else {
-                    ui.heading("Ready to Record");
-                    ui.add_space(20.0);
-                    
-                    if ui.button("⏺ Start New Recording").clicked() {
-                        self.start_recording();
-                    }
-                    
-                    ui.add_space(10.0);
-                    ui.label("Recording will capture your entire screen");
-                    ui.label("Files are saved to ~/Movies/TFT Recorder");
+                if !self.is_recording {
+                    ui.add_space(40.0);
+                    ui.label("Ready to capture your gameplay.");
+                    ui.small("Files land in ~/Movies/TFT Recorder");
                 }
-                
-                // Show error message if any
-                if let Some(error) = &self.error_message {
+
+                if let Some(err) = &self.error_message {
                     ui.add_space(20.0);
-                    ui.colored_label(egui::Color32::RED, error);
+                    ui.colored_label(egui::Color32::LIGHT_RED, err);
                     
                     if ui.button("Dismiss").clicked() {
                         self.error_message = None;
@@ -108,7 +130,7 @@ impl eframe::App for RecorderApp {
             });
         });
         
-        // Request repaint if recording (to update UI state)
+        // Request repaint if recording (to update timer)
         if self.is_recording {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
@@ -125,6 +147,7 @@ impl RecorderApp {
             match recorder.start("Desktop", 1920, 1080, 6_000_000, &output_path) {
                 Ok(_) => {
                     self.is_recording = true;
+                    self.started_at = Some(Local::now());
                     self.error_message = None;
                 }
                 Err(e) => {
