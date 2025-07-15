@@ -7,12 +7,15 @@ use recorder_core::Recorder;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub mod gui;
+
 #[derive(Parser)]
 #[command(name = "recorder")]
 #[command(about = "Ultra-light screen recorder for Team Fight Tactics", long_about = None)]
+#[command(arg_required_else_help = false)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -35,9 +38,9 @@ enum Commands {
         #[arg(long, default_value = "4000000")]
         bitrate: u32,
         
-        /// Output file path
-        #[arg(long, default_value = "tft_recording.mp4")]
-        out: String,
+        /// Output file path (defaults to ~/Movies/TFT Recorder/TFT-timestamp.mp4)
+        #[arg(long)]
+        out: Option<String>,
         
         /// Duration in seconds (0 for manual stop)
         #[arg(long, default_value = "0")]
@@ -63,14 +66,19 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     
     match cli.command {
-        Commands::Record { window, width, height, bitrate, out, duration } => {
-            record_command(window, width, height, bitrate, out, duration)
+        Some(Commands::Record { window, width, height, bitrate, out, duration }) => {
+            let output_path = out.unwrap_or_else(|| gui::get_default_output_path());
+            record_command(window, width, height, bitrate, output_path, duration)
         }
-        Commands::Host { port } => {
+        Some(Commands::Host { port }) => {
             host_command(port)
         }
-        Commands::Daemon { socket } => {
+        Some(Commands::Daemon { socket }) => {
             daemon_command(socket)
+        }
+        None => {
+            // Launched from Finder - show GUI
+            gui::launch()
         }
     }
 }
@@ -83,6 +91,10 @@ fn record_command(
     out: String,
     duration: u32,
 ) -> Result<()> {
+    // Ensure the output directory exists
+    if let Some(parent) = std::path::Path::new(&out).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     println!("Starting recording...");
     println!("Window: {}", window);
     println!("Resolution: {}x{}", width, height);
@@ -181,12 +193,12 @@ mod tests {
     fn test_default_args() {
         let cli = Cli::parse_from(vec!["recorder", "record"]);
         match cli.command {
-            Commands::Record { window, width, height, bitrate, out, duration } => {
+            Some(Commands::Record { window, width, height, bitrate, out, duration }) => {
                 assert_eq!(window, "Teamfight Tactics");
                 assert_eq!(width, 1280);
                 assert_eq!(height, 720);
                 assert_eq!(bitrate, 4000000);
-                assert_eq!(out, "tft_recording.mp4");
+                assert!(out.is_none());
                 assert_eq!(duration, 0);
             }
             _ => panic!("Expected Record command"),

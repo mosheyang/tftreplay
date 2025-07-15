@@ -24,16 +24,25 @@ fi
 
 DYLIB="apple_capture/.build/$(uname -m)-apple-macosx/release/libAppleCapture.dylib"
 
-# Ensure the Frameworks directory exists
-mkdir -p "$APP/Contents/Frameworks"
+# Re-build the Swift package so the dylib is always fresh
+echo "🔨 Building Swift package (release)..."
+(cd apple_capture && swift build -c release)
+
+# Frameworks and Resources folders
+mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
+
+if [ -f "resources/tft.icns" ]; then
+    echo "📦 Copying app icon..."
+    cp "resources/tft.icns" "$APP/Contents/Resources/"
+fi
 
 # Copy the Swift dynamic library into the app bundle
 if [ -f "$DYLIB" ]; then
     echo "📦 Copying libAppleCapture.dylib to app bundle..."
     cp "$DYLIB" "$APP/Contents/Frameworks/"
 else
-    echo "⚠️  Warning: libAppleCapture.dylib not found at $DYLIB"
-    echo "   Make sure to build the Swift package first: cd apple_capture && swift build -c release"
+    echo "❌ libAppleCapture.dylib not found at $DYLIB"
+    exit 1
 fi
 
 # Fix the library reference to use @rpath
