@@ -4,19 +4,19 @@ Ultra-light screen recorder for Team Fight Tactics (TFT) with VS Code-style exte
 
 ## Features
 
-- **Ultra-light binary**: ≤ 40 MB single-file .app bundle
-- **Hardware H.264 encoding**: 5-10× less CPU usage vs software encoding
+- **Ultra-light bundle**: ≤ 40 MB self-contained `.app`
+- **Hardware H.264 encoding**: 5-10× lower CPU than software encoding
 - **Plugin ecosystem**: VS Code-style extension support
-- **Mac-first design**: Built specifically for macOS using native APIs
+- **Minimalist GUI**: "TFT Recorder.app" lists existing captures & one-click record/stop
 
 ## Quick Start
 
 ```bash
-# Record TFT at 720p
-recorder record
+# Launch the macOS app (preferred)
+open /Applications/TFT\ Recorder.app          # or double-click in Finder
 
-# Record with custom settings
-recorder record --width 1920 --height 1080 --bitrate 8000000 --out gameplay.mp4
+# CLI fallback (headless / CI)
+recorder record --window Finder --duration 10 --out ~/Movies/tft.mp4
 
 # Stop recording with Ctrl+C
 ```
@@ -25,27 +25,21 @@ recorder record --width 1920 --height 1080 --bitrate 8000000 --out gameplay.mp4
 
 ### Prerequisites
 
-- macOS 12.0 or later
-- Rust 1.79+
+- macOS 13.0+ (Ventura)
+- Rust 1.87+
 - Swift 5.10+
 - Node.js 18+
 
 ### Building from source
 
 ```bash
-# Clone the repository
+# Clone & bundle
 git clone https://github.com/yourusername/tft-recorder.git
 cd tft-recorder
 
-# Build Swift package
-cd apple_capture
-swift build -c release
-cd ..
-
-# Build Rust binary
-cargo build --release
-
-# The binary will be at ./target/release/recorder
+# Release bundle with one command
+cargo install cargo-bundle            # first time only
+cargo bundle --bin recorder --release # creates target/release/bundle/osx/TFT\ Recorder.app
 ```
 
 ## Architecture

@@ -15,34 +15,27 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- macOS 12.0+
+- macOS 13.0+
 - Xcode 14+ with command line tools
-- Rust 1.79+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- Rust 1.87+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 - Swift 5.10+
 - Node.js 18+ (`brew install node`)
 
 ### Building
 
 ```bash
-# Build everything
-make all
+# Single-step bundle (Swift + Rust + icon)
+cargo bundle --bin recorder --release
 
-# Or build components individually
-cd apple_capture && swift build
-cargo build --release
-cd extension-host && npm install && npm run build
+# Iterate on Rust fast (watch mode)
+cargo watch -x 'run -- record --duration 3 --out /tmp/test.mp4'
 ```
 
 ### Testing
 
 ```bash
-# Run all tests
-make test
-
-# Or test individually
-cargo test --workspace
-cd apple_capture && swift test
-cd extension-host && npm test
+# Rust, Swift & TypeScript tests
+cargo test --workspace && swift test && npm test --workspaces
 ```
 
 ## Code Style

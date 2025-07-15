@@ -40,6 +40,8 @@ recorder_cli/
     bundle_build.rs
     bundle_dylib.rs
     gui_test.rs
+    rpath_check.rs
+  build.rs
   Cargo.toml
 recorder_core/
   benches/
@@ -1439,6 +1441,102 @@ fn gui_expand_home_works() {
 }
 </file>
 
+<file path="recorder_cli/tests/rpath_check.rs">
+// ABOUTME: Test to verify the binary has correct rpath settings for dylib loading
+// ABOUTME: Prevents shipping binaries that can't find their dynamic libraries
+
+#[test]
+#[cfg(target_os = "macos")]
+fn binary_has_frameworks_rpath() {
+    use std::process::Command;
+    
+    // First, ensure the binary exists
+    let binary_path = "target/release/recorder";
+    if !std::path::Path::new(binary_path).exists() {
+        eprintln!("Binary not found at {}, building it first...", binary_path);
+        
+        // Build the release binary
+        let build_status = Command::new("cargo")
+            .args(&["build", "--bin", "recorder", "--release"])
+            .status()
+            .expect("Failed to run cargo build");
+            
+        assert!(build_status.success(), "Failed to build release binary");
+    }
+    
+    // Run otool to check for rpath entries
+    let output = Command::new("otool")
+        .args(&["-l", binary_path])
+        .output()
+        .expect("Failed to run otool");
+    
+    let text = String::from_utf8_lossy(&output.stdout);
+    
+    // Check for the required rpath
+    assert!(
+        text.contains("@executable_path/../Frameworks"),
+        "Binary missing @executable_path/../Frameworks rpath. Output:\n{}",
+        text
+    );
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+#[ignore] // Run with: cargo test -- --ignored
+fn bundle_binary_has_correct_dylib_references() {
+    use std::process::Command;
+    use std::path::Path;
+    
+    // Run packaging script first
+    let workspace_root = std::env::current_dir()
+        .expect("Failed to get current dir")
+        .ancestors()
+        .find(|p| p.join("Cargo.toml").exists() && p.join("scripts/package_app.sh").exists())
+        .expect("Could not find workspace root")
+        .to_path_buf();
+    
+    let status = Command::new("bash")
+        .arg("scripts/package_app.sh")
+        .current_dir(&workspace_root)
+        .status()
+        .expect("Failed to run package_app.sh");
+    
+    assert!(status.success(), "package_app.sh failed");
+    
+    let bundle_binary = workspace_root.join("target/release/bundle/osx/TFT Recorder.app/Contents/MacOS/recorder");
+    assert!(bundle_binary.exists(), "Bundle binary not found at {:?}", bundle_binary);
+    
+    // Check that the binary references libAppleCapture.dylib via @rpath
+    let output = Command::new("otool")
+        .args(&["-L", bundle_binary.to_str().unwrap()])
+        .output()
+        .expect("Failed to run otool -L");
+    
+    let text = String::from_utf8_lossy(&output.stdout);
+    
+    assert!(
+        text.contains("@rpath/libAppleCapture.dylib"),
+        "Binary not referencing libAppleCapture.dylib via @rpath. Output:\n{}",
+        text
+    );
+}
+</file>
+
+<file path="recorder_cli/build.rs">
+// ABOUTME: Build script for recorder_cli to set proper rpath for dylib loading
+// ABOUTME: Ensures the binary can find libAppleCapture.dylib both in bundle and development
+
+#[cfg(target_os = "macos")]
+fn main() {
+    // Add rpaths that work both inside app bundles and in development
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path/../Frameworks");
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main() {}
+</file>
+
 <file path="recorder_core/benches/capture_bench.rs">
 // ABOUTME: Performance benchmarks for recorder initialization and operations
 // ABOUTME: Ensures startup time stays under 50ms for responsive user experience
@@ -1850,150 +1948,6 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines.
 ## License
 
 MIT License - see LICENSE file for details.
-</file>
-
-<file path=".github/workflows/ci.yml">
-name: macOS CI
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-
-env:
-  RUST_BACKTRACE: 1
-
-jobs:
-  test:
-    name: Test on macOS
-    runs-on: macos-14
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Swift
-      uses: SwiftyLab/setup-swift@v1
-      with:
-        swift-version: "5.10"
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: "18"
-        cache: 'npm'
-    
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt, clippy
-    
-    - name: Cache Rust dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Swift tests
-      run: |
-        cd apple_capture
-        swift test --parallel
-    
-    - name: Rust format check
-      run: cargo fmt --all -- --check
-    
-    - name: Rust clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
-    
-    - name: Rust tests
-      run: cargo test --workspace --verbose
-    
-    - name: Build release binary
-      run: cargo build --release
-    
-    - name: Integration test - 3 second recording
-      run: |
-        # Grant screen recording permission in CI (simulated)
-        # In real CI, this would need proper entitlements
-        echo "Testing CLI..."
-        ./target/release/recorder record --duration 3 --out /tmp/ci_test.mp4 || true
-        
-        # Check if binary exists and is reasonable size
-        ls -la ./target/release/recorder
-        SIZE=$(stat -f%z ./target/release/recorder)
-        echo "Binary size: $SIZE bytes"
-        
-        # Ensure binary is under 40MB
-        if [ $SIZE -gt 41943040 ]; then
-          echo "Binary too large: $SIZE bytes (limit: 40MB)"
-          exit 1
-        fi
-    
-    - name: Node.js setup
-      run: |
-        npm ci
-        cd extension-host
-        npm ci
-    
-    - name: Node.js tests
-      run: |
-        npm run lint || true
-        npm run typecheck || true
-        npm test || true
-    
-    - name: Upload artifacts
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: recorder-macos
-        path: target/release/recorder
-    
-    - name: Install cargo-bundle
-      if: success()
-      run: cargo install cargo-bundle
-    
-    - name: Bundle .app
-      if: success()
-      run: ./scripts/package_app.sh
-    
-    - name: Upload .app bundle
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: TFT-Recorder-app
-        path: target/release/bundle/osx/TFT Recorder.app
-        
-  benchmark:
-    name: Performance benchmarks
-    runs-on: macos-14
-    needs: test
-    
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-    
-    - name: Run benchmarks
-      run: |
-        cd recorder_core
-        cargo bench --no-fail-fast || true
-    
-    - name: Check startup time
-      run: |
-        # Build optimized binary
-        cargo build --release
-        
-        # Measure startup time
-        START=$(date +%s.%N)
-        timeout 1s ./target/release/recorder record --help
-        END=$(date +%s.%N)
-        
-        # Calculate duration in milliseconds
-        DURATION=$(echo "($END - $START) * 1000" | bc)
-        echo "Startup time: ${DURATION}ms"
 </file>
 
 <file path="apple_capture/Sources/AppleCapture/CaptureSession.swift">
@@ -2585,66 +2539,153 @@ name = "capture_bench"
 harness = false
 </file>
 
-<file path="scripts/package_app.sh">
-#!/usr/bin/env bash
-# ABOUTME: Script to package the TFT Recorder as a macOS .app bundle
-# ABOUTME: Handles building, bundling, and copying the Swift dylib
+<file path=".github/workflows/ci.yml">
+name: macOS CI
 
-set -euo pipefail
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
-echo "🔨 Building TFT Recorder.app..."
+env:
+  RUST_BACKTRACE: 1
 
-# Build the release binary and bundle it
-cargo bundle --bin recorder --release
-
-# The bundle might be named differently, check both possibilities
-if [ -d "target/release/bundle/osx/TFT Recorder.app" ]; then
-    APP="target/release/bundle/osx/TFT Recorder.app"
-elif [ -d "target/release/bundle/osx/recorder_cli.app" ]; then
-    APP="target/release/bundle/osx/recorder_cli.app"
-    # Rename to the expected name
-    mv "$APP" "target/release/bundle/osx/TFT Recorder.app"
-    APP="target/release/bundle/osx/TFT Recorder.app"
-else
-    echo "❌ Error: Could not find app bundle"
-    exit 1
-fi
-
-DYLIB="apple_capture/.build/$(uname -m)-apple-macosx/release/libAppleCapture.dylib"
-
-# Re-build the Swift package so the dylib is always fresh
-echo "🔨 Building Swift package (release)..."
-(cd apple_capture && swift build -c release)
-
-# Frameworks and Resources folders
-mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
-
-if [ -f "resources/tft.icns" ]; then
-    echo "📦 Copying app icon..."
-    cp "resources/tft.icns" "$APP/Contents/Resources/"
-fi
-
-# Copy the Swift dynamic library into the app bundle
-if [ -f "$DYLIB" ]; then
-    echo "📦 Copying libAppleCapture.dylib to app bundle..."
-    cp "$DYLIB" "$APP/Contents/Frameworks/"
-else
-    echo "❌ libAppleCapture.dylib not found at $DYLIB"
-    exit 1
-fi
-
-# Fix the library reference to use @rpath
-if command -v install_name_tool &> /dev/null; then
-    echo "🔧 Updating library paths..."
-    install_name_tool -change "@rpath/libAppleCapture.dylib" "@executable_path/../Frameworks/libAppleCapture.dylib" "$APP/Contents/MacOS/recorder" 2>/dev/null || true
-fi
-
-echo "✅ Created $APP"
-echo ""
-echo "To run the app:"
-echo "  open \"$APP\""
-echo ""
-echo "First run will prompt for Screen Recording permission."
+jobs:
+  test:
+    name: Test on macOS
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift
+      uses: SwiftyLab/setup-swift@v1
+      with:
+        swift-version: "5.10"
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "18"
+        cache: 'npm'
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Swift tests
+      run: |
+        cd apple_capture
+        swift test --parallel
+    
+    - name: Rust format check
+      run: cargo fmt --all -- --check
+    
+    - name: Rust clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Rust tests
+      run: cargo test --workspace --verbose
+    
+    - name: Bundle and integration tests
+      run: |
+        echo "Running bundle tests including rpath checks..."
+        cargo test --workspace -- --ignored
+    
+    - name: Build release binary
+      run: cargo build --release
+    
+    - name: Integration test - 3 second recording
+      run: |
+        # Grant screen recording permission in CI (simulated)
+        # In real CI, this would need proper entitlements
+        echo "Testing CLI..."
+        ./target/release/recorder record --duration 3 --out /tmp/ci_test.mp4 || true
+        
+        # Check if binary exists and is reasonable size
+        ls -la ./target/release/recorder
+        SIZE=$(stat -f%z ./target/release/recorder)
+        echo "Binary size: $SIZE bytes"
+        
+        # Ensure binary is under 40MB
+        if [ $SIZE -gt 41943040 ]; then
+          echo "Binary too large: $SIZE bytes (limit: 40MB)"
+          exit 1
+        fi
+    
+    - name: Node.js setup
+      run: |
+        npm ci
+        cd extension-host
+        npm ci
+    
+    - name: Node.js tests
+      run: |
+        npm run lint || true
+        npm run typecheck || true
+        npm test || true
+    
+    - name: Upload artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: recorder-macos
+        path: target/release/recorder
+    
+    - name: Install cargo-bundle
+      if: success()
+      run: cargo install cargo-bundle
+    
+    - name: Bundle .app
+      if: success()
+      run: ./scripts/package_app.sh
+    
+    - name: Upload .app bundle
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: TFT-Recorder-app
+        path: target/release/bundle/osx/TFT Recorder.app
+        
+  benchmark:
+    name: Performance benchmarks
+    runs-on: macos-14
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    
+    - name: Run benchmarks
+      run: |
+        cd recorder_core
+        cargo bench --no-fail-fast || true
+    
+    - name: Check startup time
+      run: |
+        # Build optimized binary
+        cargo build --release
+        
+        # Measure startup time
+        START=$(date +%s.%N)
+        timeout 1s ./target/release/recorder record --help
+        END=$(date +%s.%N)
+        
+        # Calculate duration in milliseconds
+        DURATION=$(echo "($END - $START) * 1000" | bc)
+        echo "Startup time: ${DURATION}ms"
 </file>
 
 <file path="apple_capture/Package.swift">
@@ -2900,55 +2941,6 @@ mod tests {
 }
 </file>
 
-<file path="recorder_cli/Cargo.toml">
-[package]
-name = "recorder_cli"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-
-[[bin]]
-name = "recorder"
-path = "src/main.rs"
-
-[dependencies]
-recorder_core = { path = "../recorder_core" }
-anyhow = { workspace = true }
-clap = { workspace = true }
-tokio = { workspace = true }
-ctrlc = "3.4"
-eframe = "0.27"
-egui = "0.27"
-chrono = "0.4"
-shellexpand = "3.1"
-dirs = "5.0"
-
-# Bundle metadata for cargo-bundle to generate macOS .app
-[package.metadata.bundle]
-name = "TFT Recorder"
-identifier = "com.tftreplay.recorder"
-icon = ["../resources/tft.icns"]
-version = "0.1.0"
-resources = []
-copyright = "Copyright (c) 2024 TFT Recorder Contributors"
-category = "public.app-category.video"
-short_description = "Screen recorder for Team Fight Tactics"
-long_description = "Ultra-light screen recorder optimized for Team Fight Tactics gameplay capture on macOS."
-
-[package.metadata.bundle.macos]
-minimum_system_version = "12.0"
-info_plist_path = "../mac_app/Info.plist"
-entitlements_path = "../mac_app/entitlements.plist"
-frameworks = [
-    "AVFoundation.framework",
-    "CoreMedia.framework", 
-    "CoreVideo.framework",
-    "VideoToolbox.framework",
-    "CoreGraphics.framework"
-]
-</file>
-
 <file path="recorder_core/src/ffi.rs">
 // ABOUTME: FFI bridge between Rust and Swift using manual C bindings
 // ABOUTME: Provides low-level interface for cross-language communication
@@ -3049,6 +3041,127 @@ pub fn stop_capture(_cap: &mut SwiftCapture) {}
 impl Drop for SwiftCapture {
     fn drop(&mut self) {}
 }
+</file>
+
+<file path="scripts/package_app.sh">
+#!/usr/bin/env bash
+# ABOUTME: Script to package the TFT Recorder as a macOS .app bundle
+# ABOUTME: Handles building, bundling, and copying the Swift dylib
+
+set -euo pipefail
+
+echo "🔨 Building TFT Recorder.app..."
+
+# Build the release binary and bundle it
+cargo bundle --bin recorder --release
+
+# The bundle might be named differently, check both possibilities
+if [ -d "target/release/bundle/osx/TFT Recorder.app" ]; then
+    APP="target/release/bundle/osx/TFT Recorder.app"
+elif [ -d "target/release/bundle/osx/recorder_cli.app" ]; then
+    APP="target/release/bundle/osx/recorder_cli.app"
+    # Rename to the expected name
+    mv "$APP" "target/release/bundle/osx/TFT Recorder.app"
+    APP="target/release/bundle/osx/TFT Recorder.app"
+    # Delete the stale bundle to avoid confusion
+    rm -rf "target/release/bundle/osx/recorder_cli.app"
+else
+    echo "❌ Error: Could not find app bundle"
+    exit 1
+fi
+
+DYLIB="apple_capture/.build/$(uname -m)-apple-macosx/release/libAppleCapture.dylib"
+
+# Re-build the Swift package so the dylib is always fresh
+echo "🔨 Building Swift package (release)..."
+(cd apple_capture && swift build -c release)
+
+# Frameworks and Resources folders
+mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
+
+if [ -f "resources/tft.icns" ]; then
+    echo "📦 Copying app icon..."
+    cp "resources/tft.icns" "$APP/Contents/Resources/"
+fi
+
+# Copy the Swift dynamic library into the app bundle
+if [ -f "$DYLIB" ]; then
+    echo "📦 Copying libAppleCapture.dylib to app bundle..."
+    cp "$DYLIB" "$APP/Contents/Frameworks/"
+else
+    echo "❌ libAppleCapture.dylib not found at $DYLIB"
+    exit 1
+fi
+
+# Fix the library references to use @rpath correctly
+if command -v install_name_tool &> /dev/null; then
+    echo "🔧 Updating library paths..."
+    # Set the dylib's install name to @rpath-relative
+    install_name_tool -id "@rpath/libAppleCapture.dylib" \
+        "$APP/Contents/Frameworks/libAppleCapture.dylib"
+    
+    # Ensure the binary references the dylib via @rpath
+    install_name_tool -change "@rpath/libAppleCapture.dylib" \
+        "@rpath/libAppleCapture.dylib" \
+        "$APP/Contents/MacOS/recorder"
+fi
+
+echo "✅ Created $APP"
+echo ""
+echo "To run the app:"
+echo "  open \"$APP\""
+echo ""
+echo "First run will prompt for Screen Recording permission."
+</file>
+
+<file path="recorder_cli/Cargo.toml">
+[package]
+name = "recorder_cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "recorder"
+path = "src/main.rs"
+
+[dependencies]
+recorder_core = { path = "../recorder_core" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+ctrlc = "3.4"
+eframe = "0.27"
+egui = "0.27"
+chrono = "0.4"
+shellexpand = "3.1"
+dirs = "5.0"
+
+# Bundle metadata for cargo-bundle to generate macOS .app
+[package.metadata.bundle]
+name = "TFT Recorder"
+identifier = "com.tftreplay.recorder"
+icon = ["../resources/tft.icns"]
+version = "0.1.0"
+resources = []
+copyright = "Copyright (c) 2024 TFT Recorder Contributors"
+category = "public.app-category.video"
+short_description = "Screen recorder for Team Fight Tactics"
+long_description = "Ultra-light screen recorder optimized for Team Fight Tactics gameplay capture on macOS."
+
+[package.metadata.bundle.macos]
+minimum_system_version = "12.0"
+info_plist_path = "../mac_app/Info.plist"
+entitlements_path = "../mac_app/entitlements.plist"
+frameworks = [
+    "AVFoundation.framework",
+    "CoreMedia.framework", 
+    "CoreVideo.framework",
+    "VideoToolbox.framework",
+    "CoreGraphics.framework"
+]
 </file>
 
 <file path="recorder_core/build.rs">

@@ -13,6 +13,9 @@ The TFT Recorder is designed as a modular, extensible screen recording system op
          │                                                 │
          ▼                                                 ▼
 ┌─────────────────┐                            ┌─────────────────┐
+│   GUI (Rust)    │  (egui) – lists recordings & buttons
+└─────────────────┘
+┌─────────────────┐                            ┌─────────────────┐
 │ Extension Host  │                            │ Hardware H.264  │
 │   (Node.js)     │                            │   Encoder       │
 └─────────────────┘                            └─────────────────┘
@@ -43,14 +46,16 @@ The TFT Recorder is designed as a modular, extensible screen recording system op
 - Recorder struct: Thread-safe recording state management
 - Platform abstraction: Allows future Linux support
 
-### 3. CLI Binary (`recorder_cli/`)
+### 3. CLI & GUI (`recorder_cli/`)
 
-**Purpose**: User-facing command interface
+**Purpose**: User-facing interfaces
 
-**Subcommands**:
+**CLI Subcommands**:
 - `record`: Start recording with specified parameters
 - `host`: Launch extension host (internal)
 - `daemon`: Run as background service for IPC
+
+**GUI**: Auto-launch when bundled as `.app` (egui front-end)
 
 ### 4. Extension Host (`extension-host/`)
 
