@@ -1,0 +1,5 @@
+This is a placeholder for the TFT Recorder icon.
+To create a proper .icns file:
+1. Create a 1024x1024 PNG image
+2. Use iconutil or an app like Icon Set Creator to convert to .icns
+3. Replace this file with the actual tft.icns

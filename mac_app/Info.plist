@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>TFT Recorder</string>
+    <key>CFBundleDisplayName</key>
+    <string>TFT Recorder</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.tftreplay.recorder</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleExecutable</key>
+    <string>recorder</string>
+    <key>CFBundleIconFile</key>
+    <string>tft</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.video</string>
+    
+    <!-- Privacy usage descriptions for TCC -->
+    <key>NSCameraUsageDescription</key>
+    <string>TFT Recorder needs screen recording permission to capture your gameplay.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>TFT Recorder can optionally record audio from your microphone for commentary.</string>
+    
+    <!-- High resolution support -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <!-- Support for dark mode -->
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
+</dict>
+</plist>

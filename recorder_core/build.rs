@@ -33,6 +33,9 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=AppleCapture");
     
     // Add rpath so the binary can find the library at runtime
+    // Use @executable_path/../Frameworks for app bundles
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
+    // Also add the development path for non-bundled usage
     println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
 
     // 3. Link system frameworks

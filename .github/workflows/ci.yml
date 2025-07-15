@@ -96,6 +96,21 @@ jobs:
       with:
         name: recorder-macos
         path: target/release/recorder
+    
+    - name: Install cargo-bundle
+      if: success()
+      run: cargo install cargo-bundle
+    
+    - name: Bundle .app
+      if: success()
+      run: ./scripts/package_app.sh
+    
+    - name: Upload .app bundle
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: TFT-Recorder-app
+        path: target/release/bundle/osx/TFT Recorder.app
         
   benchmark:
     name: Performance benchmarks
