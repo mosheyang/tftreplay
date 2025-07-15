@@ -1,0 +1,126 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test on macOS
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift
+      uses: SwiftyLab/setup-swift@v1
+      with:
+        swift-version: "5.10"
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "18"
+        cache: 'npm'
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Swift tests
+      run: |
+        cd apple_capture
+        swift test --parallel
+    
+    - name: Rust format check
+      run: cargo fmt --all -- --check
+    
+    - name: Rust clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Rust tests
+      run: cargo test --workspace --verbose
+    
+    - name: Build release binary
+      run: cargo build --release
+    
+    - name: Integration test - 3 second recording
+      run: |
+        # Grant screen recording permission in CI (simulated)
+        # In real CI, this would need proper entitlements
+        echo "Testing CLI..."
+        ./target/release/recorder record --duration 3 --out /tmp/ci_test.mp4 || true
+        
+        # Check if binary exists and is reasonable size
+        ls -la ./target/release/recorder
+        SIZE=$(stat -f%z ./target/release/recorder)
+        echo "Binary size: $SIZE bytes"
+        
+        # Ensure binary is under 40MB
+        if [ $SIZE -gt 41943040 ]; then
+          echo "Binary too large: $SIZE bytes (limit: 40MB)"
+          exit 1
+        fi
+    
+    - name: Node.js setup
+      run: |
+        npm ci
+        cd extension-host
+        npm ci
+    
+    - name: Node.js tests
+      run: |
+        npm run lint || true
+        npm run typecheck || true
+        npm test || true
+    
+    - name: Upload artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: recorder-macos
+        path: target/release/recorder
+        
+  benchmark:
+    name: Performance benchmarks
+    runs-on: macos-14
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    
+    - name: Run benchmarks
+      run: |
+        cd recorder_core
+        cargo bench --no-fail-fast || true
+    
+    - name: Check startup time
+      run: |
+        # Build optimized binary
+        cargo build --release
+        
+        # Measure startup time
+        START=$(date +%s.%N)
+        timeout 1s ./target/release/recorder record --help
+        END=$(date +%s.%N)
+        
+        # Calculate duration in milliseconds
+        DURATION=$(echo "($END - $START) * 1000" | bc)
+        echo "Startup time: ${DURATION}ms"

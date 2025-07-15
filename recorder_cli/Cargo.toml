@@ -1,0 +1,17 @@
+[package]
+name = "recorder_cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "recorder"
+path = "src/main.rs"
+
+[dependencies]
+recorder_core = { path = "../recorder_core" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+ctrlc = "3.4"
